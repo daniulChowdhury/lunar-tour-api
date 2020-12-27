@@ -1,0 +1,87 @@
+# NOTE: update this with your service name
+service: lunar-tour-api
+
+# Use the serverless-webpack plugin to transpile ES6
+plugins:
+  - serverless-bundle
+  - serverless-offline
+  - serverless-dotenv-plugin
+
+# serverless-webpack configuration
+# Enable auto-packing of external modules
+custom:
+  serverless-offline:
+    port: 4000
+  bundle:
+    linting: false
+
+provider:
+  name: aws
+  runtime: nodejs12.x
+  region: us-east-1
+  stage: ${opt:stage, self:provider.stage}
+  TableDB: ${self:custom.stage}-tableDB
+  tableThroughputs:
+    prod: 1
+    default: 1
+  tableThroughput: ${self:custom.tableThroughputs.${self:custom.stage}, self:custom.tableThroughputs.default}
+  # To load environment variables externally
+  # rename env.example to env.yml and uncomment
+  # the following line. Also, make sure to not
+  # commit your env.yml.
+  #
+  environment:
+    name_of_var: ${env:NAME_OF_VAR}
+    tableDB: ${self:custom.tableDB}
+    account: ${env:ACCOUNT}
+
+  iamRoleStatements:
+    - Effect: Allow
+      Action:
+        - dynamodb:DescribeTable
+        - dynamodb:Query
+        - dynamodb:Scan
+        - dynamodb:GetItem
+        - dynamodb:PutItem
+        - dynamodb:UpdateItem
+        - dynamodb:DeleteItem
+      # Restrict our IAM role permissions to
+      # the specific table for the stage
+      Resource:
+        - "Fn::GetAtt": [TableDB, Arn]
+    # - Effect: "Allow"
+    #   Action:
+    #     - "sqs:GetQueueUrl"
+    #     - "sqs:ListQueues"
+    #     - "sqs:SendMessage"
+    #   Resource:
+    #     - "arn:aws:sqs:${self:provider.environment.region}:${self:provider.environment.account}:*"
+
+functions:
+  graphql:
+    handler: src/graphql.graphqlHandler
+    environment:
+      SLS_DEBUG: true
+    events:
+      - http:
+          path: graphql
+          method: post
+          cors: true
+          integration: lambda-proxy
+
+      - http:
+          path: graphql
+          method: get
+          cors: true
+          integration: lambda-proxy
+
+resources:
+  - ${file(resources/sqs-queue.yml)}
+  - ${file(resources/table.yml)}
+  - ${file(resources/s3-bucket.yml)}
+  - ${file(resources/cognito-identity-pool.yml)}
+  - ${file(resources/cognito-user-pool.yml)}
+  # events:
+  #     - sqs:
+  #         arn: "arn:aws:sqs:${self:provider.environment.region}:${self:provider.environment.account}:${self:provider.environment.quque_name}-${self:provider.stage}"
+  #         batchSize: 1
